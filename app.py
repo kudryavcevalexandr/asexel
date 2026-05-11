@@ -10,7 +10,7 @@ from flask import Flask, render_template_string
 
 app = Flask(__name__)
 
-EXCEL_PATH = Path("/data/data/com.termux/files/home/Download/график ТЭЦ26 260424.xls")
+EXCEL_PATH = Path("/sdcard/Download/график ТЭЦ26 260424.xls")
 PREVIEW_ROWS = int(os.getenv("PREVIEW_ROWS", "10"))
 
 
