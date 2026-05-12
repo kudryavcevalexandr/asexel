@@ -10,7 +10,7 @@ from flask import Flask, render_template_string
 
 app = Flask(__name__)
 
-EXCEL_PATH = Path("/sdcard/Download/график ТЭЦ26 260424.xls")
+EXCEL_PATH = Path(os.getenv("EXCEL_PATH", "/sdcard/Download/график ТЭЦ26 260424.xls"))
 PREVIEW_ROWS = int(os.getenv("PREVIEW_ROWS", "10"))
 
 
@@ -20,6 +20,21 @@ class SheetInfo:
     rows: int
     cols: int
     preview_html: str
+
+
+def split_wbs_id_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if "wbs_id" not in df.columns:
+        return df
+
+    parts = (
+        df["wbs_id"]
+        .astype("string")
+        .fillna("")
+        .str.split(".", n=3, expand=True, regex=False)
+        .rename(columns=lambda idx: f"wbs_id_part_{idx + 1}")
+    )
+
+    return pd.concat([df, parts], axis=1)
 
 
 def read_excel_file(path: Path) -> tuple[dict[str, Any], list[SheetInfo]]:
@@ -35,6 +50,7 @@ def read_excel_file(path: Path) -> tuple[dict[str, Any], list[SheetInfo]]:
     excel = pd.ExcelFile(path, engine="xlrd")
     for sheet_name in excel.sheet_names:
         df = pd.read_excel(excel, sheet_name=sheet_name)
+        df = split_wbs_id_columns(df)
         preview = df.head(PREVIEW_ROWS)
         sheets.append(
             SheetInfo(
