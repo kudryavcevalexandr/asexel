@@ -25,8 +25,9 @@ class SheetInfo:
 @dataclass
 class GroupedSheetInfo:
     name: str
-    groups_html: str
+    groups_tree_html: str
     groups_count: int
+    total_rows: int
 
 
 def split_wbs_id_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -81,23 +82,34 @@ def read_grouped_by_wbs_part_3(path: Path) -> tuple[dict[str, Any], list[Grouped
         df = split_wbs_id_columns(df)
 
         if "wbs_id_part_3" not in df.columns:
-            groups_html = "<p>На этом листе нет колонки wbs_id_part_3.</p>"
+            groups_tree_html = "<p>На этом листе нет колонки wbs_id_part_3.</p>"
             groups_count = 0
         else:
-            grouped = (
-                df.groupby(["wbs_id_part_3"], dropna=False)
-                .size()
-                .reset_index(name="rows_count")
-                .sort_values(["wbs_id_part_3"], na_position="last")
+            details_parts: list[str] = ['<div class="tree-root">']
+            grouped_dfs = sorted(
+                df.groupby("wbs_id_part_3", dropna=False),
+                key=lambda g: (str(g[0]).lower() if pd.notna(g[0]) else "zzz"),
             )
-            groups_count = len(grouped)
-            groups_html = grouped.to_html(classes="preview", index=False, border=0)
+            groups_count = len(grouped_dfs)
+
+            for group_value, group_df in grouped_dfs:
+                group_name = str(group_value) if pd.notna(group_value) else "Пустое значение"
+                details_parts.append(
+                    "<details class='tree-node'>"
+                    f"<summary><b>{group_name}</b> — строк: {len(group_df)}</summary>"
+                    f"{group_df.to_html(classes='preview', index=False, border=0)}"
+                    "</details>"
+                )
+
+            details_parts.append("</div>")
+            groups_tree_html = "".join(details_parts)
 
         grouped_sheets.append(
             GroupedSheetInfo(
                 name=sheet_name,
-                groups_html=groups_html,
+                groups_tree_html=groups_tree_html,
                 groups_count=groups_count,
+                total_rows=len(df),
             )
         )
 
@@ -140,7 +152,7 @@ TEMPLATE = """
   <style>
     body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; color: #222; }
     .card { background: white; border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
-    table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+    table { border-collapse: collapse; width: 100%; font-size: .88rem; margin-top: .45rem; }
     th, td { border: 1px solid #ddd; padding: .4rem .5rem; text-align: left; }
     th { background: #f0f0f0; }
     h1, h2 { margin-top: 0; }
@@ -193,6 +205,9 @@ GROUPED_TEMPLATE = """
     .sheet-nav { margin-top: .8rem; display:flex; gap:.45rem; flex-wrap: wrap; }
     .sheet-chip { display:inline-block; background:#eef4ff; color:#1f4a93; border-radius:999px; padding:.3rem .7rem; text-decoration:none; font-size:.86rem; }
     .sheet-chip:hover { background:#dce9ff; }
+    .hint { color:#666; font-size: .9rem; margin-top:.4rem; }
+    .tree-node { border: 1px solid #e5e5e5; border-radius: 8px; margin: .5rem 0; padding: .45rem .65rem; background:#fcfcfc; }
+    .tree-node > summary { cursor: pointer; }
   </style>
 </head>
 <body>
@@ -204,6 +219,7 @@ GROUPED_TEMPLATE = """
 
   <div class="card">
     <h1>Группировка строк по wbs_id_part_3</h1>
+    <p class="hint">Это интерактивное дерево: раскройте нужную группу, чтобы посмотреть строки внутри неё.</p>
     <div class="meta">
       <p><b>Файл:</b> {{ meta.file_name }}</p>
       <p><b>Листов:</b> {{ grouped_sheets|length }}</p>
@@ -219,8 +235,8 @@ GROUPED_TEMPLATE = """
   {% for s in grouped_sheets %}
     <div class="card" id="sheet-{{ loop.index }}">
       <h2>Лист: {{ s.name }}</h2>
-      <p><b>Групп:</b> {{ s.groups_count }}</p>
-      {{ s.groups_html | safe }}
+      <p><b>Групп:</b> {{ s.groups_count }} | <b>Всего строк:</b> {{ s.total_rows }}</p>
+      {{ s.groups_tree_html | safe }}
     </div>
   {% endfor %}
 </body>
