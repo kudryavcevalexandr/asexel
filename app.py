@@ -71,7 +71,7 @@ def read_excel_file(path: Path) -> tuple[dict[str, Any], list[SheetInfo]]:
     return metadata, sheets
 
 
-def read_grouped_by_wbs_pairs(path: Path) -> tuple[dict[str, Any], list[GroupedSheetInfo]]:
+def read_grouped_by_wbs_part_3(path: Path) -> tuple[dict[str, Any], list[GroupedSheetInfo]]:
     metadata, _ = read_excel_file(path)
     grouped_sheets: list[GroupedSheetInfo] = []
 
@@ -80,16 +80,15 @@ def read_grouped_by_wbs_pairs(path: Path) -> tuple[dict[str, Any], list[GroupedS
         df = pd.read_excel(excel, sheet_name=sheet_name)
         df = split_wbs_id_columns(df)
 
-        required_columns = {"wbs_id_part_1", "wbs_id_part_2"}
-        if not required_columns.issubset(df.columns):
-            groups_html = "<p>На этом листе нет колонок wbs_id_part_1 и wbs_id_part_2.</p>"
+        if "wbs_id_part_3" not in df.columns:
+            groups_html = "<p>На этом листе нет колонки wbs_id_part_3.</p>"
             groups_count = 0
         else:
             grouped = (
-                df.groupby(["wbs_id_part_2", "wbs_id_part_1"], dropna=False)
+                df.groupby(["wbs_id_part_3"], dropna=False)
                 .size()
                 .reset_index(name="rows_count")
-                .sort_values(["wbs_id_part_2", "wbs_id_part_1"], na_position="last")
+                .sort_values(["wbs_id_part_3"], na_position="last")
             )
             groups_count = len(grouped)
             groups_html = grouped.to_html(classes="preview", index=False, border=0)
@@ -104,6 +103,33 @@ def read_grouped_by_wbs_pairs(path: Path) -> tuple[dict[str, Any], list[GroupedS
 
     return metadata, grouped_sheets
 
+
+NAV_TEMPLATE = """
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Навигация</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; color: #222; }
+    .card { background: white; border-radius: 10px; padding: 1.2rem 1.5rem; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .nav { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: .8rem; }
+    .btn { display:inline-block; background:#eef4ff; color:#1f4a93; border-radius:999px; padding:.5rem .9rem; text-decoration:none; }
+    .btn:hover { background:#dce9ff; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Навигация по страницам</h1>
+    <p>Выберите нужный режим просмотра Excel-файла:</p>
+    <div class="nav">
+      <a class="btn" href="/preview">Предпросмотр файла</a>
+      <a class="btn" href="/grouped">Группировка по wbs_id_part_3</a>
+    </div>
+  </div>
+</body>
+</html>
+"""
 
 TEMPLATE = """
 <!doctype html>
@@ -123,6 +149,7 @@ TEMPLATE = """
 </head>
 <body>
   <div class="card">
+    <p><a href="/">← На страницу навигации</a> | <a href="/grouped">Группировка по wbs_id_part_3</a></p>
     <h1>Основные данные Excel-файла</h1>
     <div class="meta">
       <p><b>Файл:</b> {{ meta.file_name }}</p>
@@ -134,7 +161,7 @@ TEMPLATE = """
   </div>
 
   {% for s in sheets %}
-    <div class="card">
+    <div class="card" id="sheet-{{ loop.index }}">
       <h2>Лист: {{ s.name }}</h2>
       <p><b>Строк:</b> {{ s.rows }} | <b>Колонок:</b> {{ s.cols }}</p>
       <h3>Первые {{ preview_rows }} строк</h3>
@@ -151,7 +178,7 @@ GROUPED_TEMPLATE = """
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Группировка Excel по wbs_id_part_2 / wbs_id_part_1</title>
+  <title>Группировка Excel по wbs_id_part_3</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; color: #222; }
     .card { background: white; border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
@@ -160,24 +187,37 @@ GROUPED_TEMPLATE = """
     th { background: #f0f0f0; }
     h1, h2 { margin-top: 0; }
     .meta p { margin: .2rem 0; }
-    .links { margin-bottom: 1rem; }
+    .top-nav { margin-bottom: 1rem; display:flex; gap: .6rem; flex-wrap: wrap; }
+    .btn { display:inline-block; background:#fff; border:1px solid #d8d8d8; border-radius:999px; padding:.45rem .8rem; text-decoration:none; color:#222; font-size:.92rem; }
+    .btn:hover { background:#f1f1f1; }
+    .sheet-nav { margin-top: .8rem; display:flex; gap:.45rem; flex-wrap: wrap; }
+    .sheet-chip { display:inline-block; background:#eef4ff; color:#1f4a93; border-radius:999px; padding:.3rem .7rem; text-decoration:none; font-size:.86rem; }
+    .sheet-chip:hover { background:#dce9ff; }
   </style>
 </head>
 <body>
-  <div class="links">
-    <a href="/">← Назад к предпросмотру листов</a>
+  <div class="top-nav">
+    <a class="btn" href="/">← К навигации</a>
+    <a class="btn" href="/preview">К предпросмотру листов</a>
+    <a class="btn" href="#grouped-sections">↓ К таблицам группировок</a>
   </div>
 
   <div class="card">
-    <h1>Группировка строк по паре wbs_id_part_2 - wbs_id_part_1</h1>
+    <h1>Группировка строк по wbs_id_part_3</h1>
     <div class="meta">
       <p><b>Файл:</b> {{ meta.file_name }}</p>
       <p><b>Листов:</b> {{ grouped_sheets|length }}</p>
     </div>
+    <div class="sheet-nav">
+      {% for s in grouped_sheets %}
+        <a class="sheet-chip" href="#sheet-{{ loop.index }}">{{ s.name }}</a>
+      {% endfor %}
+    </div>
   </div>
 
+  <div id="grouped-sections"></div>
   {% for s in grouped_sheets %}
-    <div class="card">
+    <div class="card" id="sheet-{{ loop.index }}">
       <h2>Лист: {{ s.name }}</h2>
       <p><b>Групп:</b> {{ s.groups_count }}</p>
       {{ s.groups_html | safe }}
@@ -189,6 +229,11 @@ GROUPED_TEMPLATE = """
 
 
 @app.route("/")
+def navigation_page():
+    return render_template_string(NAV_TEMPLATE)
+
+
+@app.route("/preview")
 def index():
     if not EXCEL_PATH.exists():
         return (
@@ -213,7 +258,7 @@ def grouped_page():
         )
 
     try:
-        metadata, grouped_sheets = read_grouped_by_wbs_pairs(EXCEL_PATH)
+        metadata, grouped_sheets = read_grouped_by_wbs_part_3(EXCEL_PATH)
     except Exception as exc:
         return f"Ошибка чтения Excel: {exc}"
 
