@@ -11,6 +11,7 @@ from flask import Flask, render_template_string
 app = Flask(__name__)
 
 EXCEL_PATH = Path(os.getenv("EXCEL_PATH", "/sdcard/Download/график ТЭЦ26 260424.xls"))
+SECOND_EXCEL_NAME = os.getenv("SECOND_EXCEL_NAME", "nomenclature_parsed.xlsx")
 PREVIEW_ROWS = int(os.getenv("PREVIEW_ROWS", "10"))
 
 
@@ -162,23 +163,28 @@ TEMPLATE = """
 <body>
   <div class="card">
     <p><a href="/">← На страницу навигации</a> | <a href="/grouped">Группировка по wbs_id_part_3</a></p>
-    <h1>Основные данные Excel-файла</h1>
-    <div class="meta">
-      <p><b>Файл:</b> {{ meta.file_name }}</p>
-      <p><b>Путь:</b> {{ meta.full_path }}</p>
-      <p><b>Размер:</b> {{ meta.size_mb }} МБ</p>
-      <p><b>Изменён:</b> {{ meta.modified }}</p>
-      <p><b>Листов:</b> {{ sheets|length }}</p>
-    </div>
+    <h1>Основные данные Excel-файлов</h1>
   </div>
 
-  {% for s in sheets %}
-    <div class="card" id="sheet-{{ loop.index }}">
-      <h2>Лист: {{ s.name }}</h2>
-      <p><b>Строк:</b> {{ s.rows }} | <b>Колонок:</b> {{ s.cols }}</p>
-      <h3>Первые {{ preview_rows }} строк</h3>
-      {{ s.preview_html | safe }}
+  {% for file_preview in previews %}
+    <div class="card">
+      <h2>Файл: {{ file_preview.meta.file_name }}</h2>
+      <div class="meta">
+        <p><b>Путь:</b> {{ file_preview.meta.full_path }}</p>
+        <p><b>Размер:</b> {{ file_preview.meta.size_mb }} МБ</p>
+        <p><b>Изменён:</b> {{ file_preview.meta.modified }}</p>
+        <p><b>Листов:</b> {{ file_preview.sheets|length }}</p>
+      </div>
     </div>
+
+    {% for s in file_preview.sheets %}
+      <div class="card" id="file-{{ loop.parent.index }}-sheet-{{ loop.index }}">
+        <h3>Лист: {{ s.name }}</h3>
+        <p><b>Строк:</b> {{ s.rows }} | <b>Колонок:</b> {{ s.cols }}</p>
+        <h4>Первые {{ preview_rows }} строк</h4>
+        {{ s.preview_html | safe }}
+      </div>
+    {% endfor %}
   {% endfor %}
 </body>
 </html>
@@ -257,12 +263,20 @@ def index():
             "Укажите путь к файлу через переменную окружения EXCEL_PATH."
         )
 
-    try:
-        metadata, sheets = read_excel_file(EXCEL_PATH)
-    except Exception as exc:
-        return f"Ошибка чтения Excel: {exc}"
+    files_to_preview = [EXCEL_PATH]
+    second_file_path = EXCEL_PATH.parent / SECOND_EXCEL_NAME
+    if second_file_path != EXCEL_PATH and second_file_path.exists():
+        files_to_preview.append(second_file_path)
 
-    return render_template_string(TEMPLATE, meta=metadata, sheets=sheets, preview_rows=PREVIEW_ROWS)
+    previews = []
+    for file_path in files_to_preview:
+        try:
+            metadata, sheets = read_excel_file(file_path)
+        except Exception as exc:
+            return f"Ошибка чтения Excel ({file_path.name}): {exc}"
+        previews.append({"meta": metadata, "sheets": sheets})
+
+    return render_template_string(TEMPLATE, previews=previews, preview_rows=PREVIEW_ROWS)
 
 
 @app.route("/grouped")
