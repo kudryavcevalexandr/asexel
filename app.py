@@ -10,8 +10,9 @@ from flask import Flask, render_template_string, request
 
 app = Flask(__name__)
 
-EXCEL_PATH = Path(os.getenv("EXCEL_PATH", "/sdcard/Download/график ТЭЦ26 260424.xls"))
-SECOND_EXCEL_NAME = os.getenv("SECOND_EXCEL_NAME", "nomenclature_parsed.xlsx")
+DEFAULT_DIR = Path(os.getenv("DOWNLOAD_DIR", "/sdcard/Download"))
+EXCEL_PATH = Path(os.getenv("EXCEL_PATH", DEFAULT_DIR / "график ТЭЦ26 260424.xls"))
+SECOND_EXCEL_PATH = Path(os.getenv("SECOND_EXCEL_PATH", DEFAULT_DIR / "nomenclature_parsed.xlsx"))
 PREVIEW_ROWS = int(os.getenv("PREVIEW_ROWS", "10"))
 
 
@@ -119,9 +120,8 @@ def read_grouped_by_wbs_part_3(path: Path) -> tuple[dict[str, Any], list[Grouped
 
 def get_available_files() -> list[Path]:
     files = [EXCEL_PATH]
-    second_file_path = EXCEL_PATH.parent / SECOND_EXCEL_NAME
-    if second_file_path != EXCEL_PATH:
-        files.append(second_file_path)
+    if SECOND_EXCEL_PATH != EXCEL_PATH:
+        files.append(SECOND_EXCEL_PATH)
     return files
 
 
