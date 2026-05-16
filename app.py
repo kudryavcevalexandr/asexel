@@ -212,8 +212,9 @@ TEMPLATE = """
       </div>
     </div>
 
+    {% set outer_loop = loop %}
     {% for s in file_preview.sheets %}
-      <div class="card" id="file-{{ loop.parent_loop.index }}-sheet-{{ loop.index }}">
+      <div class="card" id="file-{{ outer_loop.index }}-sheet-{{ loop.index }}">
         <h3>Лист: {{ s.name }}</h3>
         <p><b>Строк:</b> {{ s.rows }} | <b>Колонок:</b> {{ s.cols }}</p>
         <h4>Первые {{ preview_rows }} строк</h4>
