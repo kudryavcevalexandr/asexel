@@ -6,7 +6,7 @@ from typing import Any
 import os
 
 import pandas as pd
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 
 app = Flask(__name__)
 
@@ -117,6 +117,37 @@ def read_grouped_by_wbs_part_3(path: Path) -> tuple[dict[str, Any], list[Grouped
     return metadata, grouped_sheets
 
 
+def get_available_files() -> list[Path]:
+    files = [EXCEL_PATH]
+    second_file_path = EXCEL_PATH.parent / SECOND_EXCEL_NAME
+    if second_file_path != EXCEL_PATH:
+        files.append(second_file_path)
+    return files
+
+
+def resolve_selected_file() -> tuple[Path | None, str | None]:
+    selected_path = request.args.get("file")
+    available_files = get_available_files()
+
+    if selected_path:
+        candidate = Path(selected_path)
+        if any(candidate == file_path for file_path in available_files):
+            return candidate, None
+        return None, f"Недопустимый путь файла: {selected_path}"
+
+    if EXCEL_PATH.exists():
+        return EXCEL_PATH, None
+
+    for file_path in available_files:
+        if file_path.exists():
+            return file_path, None
+
+    return None, (
+        f"Файл не найден: {EXCEL_PATH}<br>"
+        "Укажите путь к файлу через переменную окружения EXCEL_PATH."
+    )
+
+
 NAV_TEMPLATE = """
 <!doctype html>
 <html lang="ru">
@@ -134,9 +165,13 @@ NAV_TEMPLATE = """
 <body>
   <div class="card">
     <h1>Навигация по страницам</h1>
-    <p>Выберите нужный режим просмотра Excel-файла:</p>
+    <p>Выберите файл на предпросмотр:</p>
     <div class="nav">
-      <a class="btn" href="/preview">Предпросмотр файла</a>
+      <a class="btn" href="/preview?file=/sdcard/Download/график%20ТЭЦ26%20260424.xls">/sdcard/Download/график ТЭЦ26 260424.xls</a>
+      <a class="btn" href="/preview?file=/sdcard/Download/nomenclature_parsed.xlsx">/sdcard/Download/nomenclature_parsed.xlsx</a>
+    </div>
+    <p style="margin-top:1rem;">Или откройте группировку для основного файла:</p>
+    <div class="nav">
       <a class="btn" href="/grouped">Группировка по wbs_id_part_3</a>
     </div>
   </div>
@@ -257,25 +292,16 @@ def navigation_page():
 
 @app.route("/preview")
 def index():
-    if not EXCEL_PATH.exists():
-        return (
-            f"Файл не найден: {EXCEL_PATH}<br>"
-            "Укажите путь к файлу через переменную окружения EXCEL_PATH."
-        )
+    selected_file, error_message = resolve_selected_file()
+    if error_message:
+        return error_message
 
-    files_to_preview = [EXCEL_PATH]
-    second_file_path = EXCEL_PATH.parent / SECOND_EXCEL_NAME
-    if second_file_path != EXCEL_PATH and second_file_path.exists():
-        files_to_preview.append(second_file_path)
+    try:
+        metadata, sheets = read_excel_file(selected_file)
+    except Exception as exc:
+        return f"Ошибка чтения Excel ({selected_file.name}): {exc}"
 
-    previews = []
-    for file_path in files_to_preview:
-        try:
-            metadata, sheets = read_excel_file(file_path)
-        except Exception as exc:
-            return f"Ошибка чтения Excel ({file_path.name}): {exc}"
-        previews.append({"meta": metadata, "sheets": sheets})
-
+    previews = [{"meta": metadata, "sheets": sheets}]
     return render_template_string(TEMPLATE, previews=previews, preview_rows=PREVIEW_ROWS)
 
 
