@@ -47,9 +47,9 @@ def upload():
     file.save(path)
     try:
         pd.ExcelFile(path, engine="openpyxl")
-    except Exception:
+    except Exception as e:
         path.unlink(missing_ok=True)
-        flash("Файл поврежден или не является читаемой книгой Excel.")
+        flash(f"Файл поврежден или не является читаемой книгой Excel. Детали: {e}")
         return redirect(url_for("index"))
     session.clear()
     session["current_file"] = name
