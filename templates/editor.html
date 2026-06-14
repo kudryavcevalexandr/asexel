@@ -6,11 +6,24 @@
   {% for message in get_flashed_messages() %}<div class="notice">{{ message }}</div>{% endfor %}
   <form method="get" action="{{ url_for('table') }}">
     <div class="form-grid">
-      <label class="field">Лист<select name="sheet">{% for sheet in sheets %}<option>{{ sheet }}</option>{% endfor %}</select></label>
+      <label class="field">Лист<select name="sheet" id="sheet-select" data-editor-url="{{ url_for('editor') }}">{% for name in sheets %}<option value="{{ name }}" {% if name == sheet %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
       <label class="field">Размер батча<input type="number" name="batch_size" value="{{ batch_size }}" min="1" max="{{ max_batch_size }}" required></label>
+    </div>
+    <div class="columns-heading"><b>Колонки таблицы</b><button class="btn secondary" type="button" id="select-all-columns">Выделить все колонки</button></div>
+    <div class="columns-grid">
+      {% for column in columns %}<label class="column-check"><input type="checkbox" name="columns" value="{{ column }}" checked> <span>{{ column }}</span></label>{% endfor %}
     </div>
     <label class="check"><input type="checkbox" name="transition" value="true"> Только записи, где is_transition = True</label>
     <div class="actions"><button class="btn">Показать таблицу →</button><a class="btn danger" href="{{ url_for('index') }}">Выбрать другой файл</a></div>
   </form>
 </section>
+<script>
+  const sheetSelect = document.querySelector("#sheet-select");
+  sheetSelect.addEventListener("change", () => {
+    window.location.href = `${sheetSelect.dataset.editorUrl}?sheet=${encodeURIComponent(sheetSelect.value)}`;
+  });
+  document.querySelector("#select-all-columns").addEventListener("click", () => {
+    document.querySelectorAll('input[name="columns"]').forEach((checkbox) => checkbox.checked = true);
+  });
+</script>
 {% endblock %}

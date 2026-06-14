@@ -57,11 +57,16 @@ def editor():
         flash("Сначала загрузите файл.")
         return redirect(url_for("index"))
     try:
-        sheets = pd.ExcelFile(path, engine="openpyxl").sheet_names
+        excel = pd.ExcelFile(path, engine="openpyxl")
+        sheets = excel.sheet_names
+        sheet = request.args.get("sheet")
+        if sheet not in sheets:
+            sheet = sheets[0]
+        columns = pd.read_excel(path, sheet_name=sheet, nrows=0, engine="openpyxl").columns.tolist()
     except Exception:
         flash("Не удалось прочитать файл. Возможно, он поврежден.")
         return redirect(url_for("index"))
-    return render_template("editor.html", filename=path.name.split("_", 1)[1], sheets=sheets, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE)
+    return render_template("editor.html", filename=path.name.split("_", 1)[1], sheets=sheets, sheet=sheet, columns=columns, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE)
 
 
 @app.get("/table")
@@ -76,7 +81,8 @@ def table():
         if sheet not in excel.sheet_names:
             sheet = excel.sheet_names[0]
         frame = pd.read_excel(path, sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
-        visible = [column for column in frame.columns if frame[column].astype(str).str.strip().ne("").any()][:3]
+        requested_columns = request.args.getlist("columns")
+        visible = [column for column in frame.columns if column in requested_columns] if requested_columns else frame.columns.tolist()
         frame = frame.loc[:, visible]
         if request.args.get("transition") == "true" and "is_transition" in frame.columns:
             frame = frame[frame["is_transition"].astype(str).str.strip().str.lower().eq("true")]
@@ -94,8 +100,9 @@ def table():
     offset = (page - 1) * batch_size
     rows = frame.iloc[offset:offset + batch_size].values.tolist()
     def page_url(number):
-        return url_for("table", sheet=sheet, batch_size=batch_size, transition=request.args.get("transition", ""), page=number)
-    return render_template("table.html", filename=path.name.split("_", 1)[1], columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), page_url=page_url)
+        return url_for("table", sheet=sheet, columns=visible, batch_size=batch_size, transition=request.args.get("transition", ""), page=number)
+    editor_url = url_for("editor", sheet=sheet)
+    return render_template("table.html", filename=path.name.split("_", 1)[1], columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), page_url=page_url, editor_url=editor_url)
 
 
 @app.post("/save")
