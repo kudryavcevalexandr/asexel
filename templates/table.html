@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Таблица{% endblock %}
+{% block content %}
+<section class="card">
+  <p class="muted">ШАГ 2 ИЗ 2</p><h1>{{ filename }}</h1>
+  {% for message in get_flashed_messages() %}<div class="notice">{{ message }}</div>{% endfor %}
+  <div class="actions"><a class="btn secondary" href="{{ url_for('editor') }}">← Изменить фильтры</a><a class="btn secondary" href="{{ url_for('download') }}">Скачать файл</a></div>
+  <div class="table-box"><table><thead><tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+  <div class="pagination"><span class="muted">Записи {{ range_start }}–{{ range_end }} из {{ total }}</span>{% if page > 1 %}<a class="btn secondary" href="{{ page_url(page-1) }}">← Назад</a>{% endif %}<b>Страница {{ page }} из {{ pages }}</b>{% if page < pages %}<a class="btn secondary" href="{{ page_url(page+1) }}">Вперёд →</a>{% endif %}</div>
+</section>
+{% endblock %}
