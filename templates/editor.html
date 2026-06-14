@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Настройка выборки{% endblock %}
+{% block content %}
+<section class="card hero">
+  <p class="muted">ШАГ 1 ИЗ 2</p><h1>Настройте выборку</h1><p class="muted">{{ filename }}</p>
+  {% for message in get_flashed_messages() %}<div class="notice">{{ message }}</div>{% endfor %}
+  <form method="get" action="{{ url_for('table') }}">
+    <div class="form-grid">
+      <label class="field">Лист<select name="sheet">{% for sheet in sheets %}<option>{{ sheet }}</option>{% endfor %}</select></label>
+      <label class="field">Размер батча<input type="number" name="batch_size" value="{{ batch_size }}" min="1" max="{{ max_batch_size }}" required></label>
+    </div>
+    <label class="check"><input type="checkbox" name="transition" value="true"> Только записи, где is_transition = True</label>
+    <div class="actions"><button class="btn">Показать таблицу →</button><a class="btn danger" href="{{ url_for('index') }}">Выбрать другой файл</a></div>
+  </form>
+</section>
+{% endblock %}

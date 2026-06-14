@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card hero">
+  <p class="muted">EXCEL STUDIO</p>
+  <h1>Редактируйте Excel прямо в браузере</h1>
+  <p class="muted">Загрузите книгу .xlsx, настройте фильтры и просмотрите данные.</p>
+  {% for message in get_flashed_messages() %}<div class="notice">{{ message }}</div>{% endfor %}
+  <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+    <label class="drop"><b>Выберите файл .xlsx</b><br><br><input type="file" name="excel_file" accept=".xlsx" required></label>
+    <button class="btn">Загрузить и открыть →</button>
+  </form>
+</section>
+{% endblock %}
