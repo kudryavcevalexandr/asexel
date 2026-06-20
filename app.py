@@ -15,6 +15,9 @@ UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 DEFAULT_BATCH_SIZE = 100
 MAX_BATCH_SIZE = 1000
+DEFAULT_TABLE_SCALE = 100
+MIN_TABLE_SCALE = 50
+MAX_TABLE_SCALE = 150
 
 
 def current_path() -> Path | None:
@@ -66,7 +69,7 @@ def editor():
     except Exception:
         flash("Не удалось прочитать файл. Возможно, он поврежден.")
         return redirect(url_for("index"))
-    return render_template("editor.html", filename=path.name.split("_", 1)[1], sheets=sheets, sheet=sheet, columns=columns, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE)
+    return render_template("editor.html", filename=path.name.split("_", 1)[1], sheets=sheets, sheet=sheet, columns=columns, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE, table_scale=DEFAULT_TABLE_SCALE, min_table_scale=MIN_TABLE_SCALE, max_table_scale=MAX_TABLE_SCALE)
 
 
 @app.get("/table")
@@ -88,6 +91,7 @@ def table():
             frame = frame[frame["is_transition"].astype(str).str.strip().str.lower().eq("true")]
         batch_size = max(1, min(int(request.args.get("batch_size", DEFAULT_BATCH_SIZE)), MAX_BATCH_SIZE))
         page = max(1, int(request.args.get("page", 1)))
+        table_scale = max(MIN_TABLE_SCALE, min(int(request.args.get("table_scale", DEFAULT_TABLE_SCALE)), MAX_TABLE_SCALE))
     except (ValueError, TypeError):
         flash("Размер батча и номер страницы должны быть целыми числами.")
         return redirect(url_for("editor"))
@@ -100,9 +104,17 @@ def table():
     offset = (page - 1) * batch_size
     rows = frame.iloc[offset:offset + batch_size].values.tolist()
     def page_url(number):
-        return url_for("table", sheet=sheet, columns=visible, batch_size=batch_size, transition=request.args.get("transition", ""), page=number)
+        return url_for("table", sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=number)
     editor_url = url_for("editor", sheet=sheet)
-    return render_template("table.html", filename=path.name.split("_", 1)[1], columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), page_url=page_url, editor_url=editor_url)
+
+    pagination_pages = []
+    for number in range(1, pages + 1):
+        if number == 1 or number == pages or abs(number - page) <= 2:
+            pagination_pages.append(number)
+        elif pagination_pages and pagination_pages[-1] != "…":
+            pagination_pages.append("…")
+
+    return render_template("table.html", filename=path.name.split("_", 1)[1], columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, editor_url=editor_url)
 
 
 @app.post("/save")
