@@ -6,6 +6,22 @@
   {% for message in get_flashed_messages() %}<div class="notice">{{ message }}</div>{% endfor %}
   <div class="actions table-actions"><a class="btn secondary" href="{{ editor_url }}">← Изменить фильтры</a><a class="btn secondary" href="{{ url_for('download') }}">Скачать файл</a><span class="scale-badge">Масштаб: {{ table_scale }}%</span></div>
   <div class="table-box"><table style="--table-scale: {{ table_scale / 100 }};"><thead><tr>{% for col in columns %}<th class="{% if loop.first %}first-column{% endif %}{% if col|string|lower == 'name_fixed' %} long-column{% endif %}">{{ col }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for cell in row %}<td class="{% if loop.first %}first-column{% endif %}{% if columns[loop.index0]|string|lower == 'name_fixed' %} long-column{% endif %}">{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
-  <div class="pagination"><span class="muted">Записи {{ range_start }}–{{ range_end }} из {{ total }}</span>{% if page > 1 %}<a class="btn secondary" href="{{ page_url(page-1) }}">← Назад</a>{% endif %}<b>Батч {{ page }} из {{ pages }}</b>{% for number in pagination_pages %}{% if number == "…" %}<span class="pagination-ellipsis">…</span>{% elif number == page %}<span class="batch-link current">{{ number }}</span>{% else %}<a class="batch-link" href="{{ page_url(number) }}">{{ number }}</a>{% endif %}{% endfor %}{% if page < pages %}<a class="btn secondary" href="{{ page_url(page+1) }}">Вперёд →</a>{% endif %}</div>
+  <div class="pagination">
+    <span class="muted">Записи {{ range_start }}–{{ range_end }} из {{ total }}</span>
+    {% if page > 1 %}<a class="btn secondary" href="{{ page_url(page-1) }}">← Назад</a>{% endif %}
+    <b>Батч {{ page }} из {{ pages }}</b>
+    <form class="batch-jump" method="get" action="{{ url_for('table') }}">
+      <input type="hidden" name="sheet" value="{{ sheet }}">
+      {% for column in columns %}<input type="hidden" name="columns" value="{{ column }}">{% endfor %}
+      <input type="hidden" name="batch_size" value="{{ batch_size }}">
+      <input type="hidden" name="table_scale" value="{{ table_scale }}">
+      {% if transition %}<input type="hidden" name="transition" value="true">{% endif %}
+      <label for="batch-page">Перейти к батчу</label>
+      <input id="batch-page" type="number" name="page" value="{{ page }}" min="1" max="{{ pages }}" inputmode="numeric" required>
+      <button class="btn secondary" type="submit">Перейти</button>
+    </form>
+    {% for number in pagination_pages %}{% if number == "…" %}<span class="pagination-ellipsis">…</span>{% elif number == page %}<span class="batch-link current">{{ number }}</span>{% else %}<a class="batch-link" href="{{ page_url(number) }}">{{ number }}</a>{% endif %}{% endfor %}
+    {% if page < pages %}<a class="btn secondary" href="{{ page_url(page+1) }}">Вперёд →</a>{% endif %}
+  </div>
 </section>
 {% endblock %}
