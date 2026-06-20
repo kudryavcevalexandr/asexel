@@ -18,6 +18,29 @@ MAX_BATCH_SIZE = 1000
 DEFAULT_TABLE_SCALE = 80
 MIN_TABLE_SCALE = 50
 MAX_TABLE_SCALE = 150
+ANCHOR_COLUMNS = ("anchor_name", "anchor", "anchors")
+
+
+def parse_anchor_filter(raw: str) -> list[str]:
+    anchors: list[str] = []
+    seen: set[str] = set()
+    for part in raw.replace("\r", "\n").replace(",", "\n").replace(";", "\n").split("\n"):
+        value = part.strip()
+        if value and value not in seen:
+            anchors.append(value)
+            seen.add(value)
+    return anchors
+
+
+def anchor_filter_column(columns) -> str | None:
+    lowered = {str(column).strip().lower(): column for column in columns}
+    for name in ANCHOR_COLUMNS:
+        if name in lowered:
+            return lowered[name]
+    for column in columns:
+        if "anchor" in str(column).lower():
+            return column
+    return None
 
 
 def current_path() -> Path | None:
@@ -75,7 +98,7 @@ def editor():
     return render_template("editor.html", filename=path.name.split("_", 1)[1], sheets=sheets, sheet=sheet, columns=columns, default_columns=default_columns, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE, table_scale=DEFAULT_TABLE_SCALE, min_table_scale=MIN_TABLE_SCALE, max_table_scale=MAX_TABLE_SCALE, default_transition=True)
 
 
-def render_table_page(*, without_anchor: bool = False):
+def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = False):
     path = current_path()
     if not path:
         flash("Сначала загрузите файл.")
@@ -88,6 +111,17 @@ def render_table_page(*, without_anchor: bool = False):
         frame = pd.read_excel(path, sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
         if request.args.get("transition") == "true" and "is_transition" in frame.columns:
             frame = frame[frame["is_transition"].astype(str).str.strip().str.lower().eq("true")]
+        anchors_raw = request.args.get("anchors", "")
+        anchors = parse_anchor_filter(anchors_raw) if anchor_filter else []
+        anchor_column = anchor_filter_column(frame.columns) if anchor_filter else None
+        if anchor_filter:
+            if not anchors:
+                flash("Введите anchors для фильтра.")
+                return redirect(url_for("editor", sheet=sheet))
+            if anchor_column is None:
+                flash("В выбранном листе не найдена колонка с anchor.")
+                return redirect(url_for("editor", sheet=sheet))
+            frame = frame[frame[anchor_column].astype(str).str.strip().isin(anchors)]
         requested_columns = request.args.getlist("columns")
         visible = [column for column in frame.columns if column in requested_columns] if requested_columns else frame.columns.tolist()
         if without_anchor:
@@ -108,8 +142,8 @@ def render_table_page(*, without_anchor: bool = False):
     offset = (page - 1) * batch_size
     rows = frame.iloc[offset:offset + batch_size].values.tolist()
     def page_url(number):
-        endpoint = "table_without_anchor" if without_anchor else "table"
-        return url_for(endpoint, sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=number)
+        endpoint = "table_anchors" if anchor_filter else "table_without_anchor" if without_anchor else "table"
+        return url_for(endpoint, sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), anchors=request.args.get("anchors", "") if anchor_filter else None, page=number)
     editor_url = url_for("editor", sheet=sheet)
     without_anchor_url = None
     if not without_anchor:
@@ -122,8 +156,8 @@ def render_table_page(*, without_anchor: bool = False):
         elif pagination_pages and pagination_pages[-1] != "…":
             pagination_pages.append("…")
 
-    table_endpoint = "table_without_anchor" if without_anchor else "table"
-    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url, without_anchor=without_anchor, without_anchor_url=without_anchor_url, table_endpoint=table_endpoint)
+    table_endpoint = "table_anchors" if anchor_filter else "table_without_anchor" if without_anchor else "table"
+    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url, without_anchor=without_anchor, without_anchor_url=without_anchor_url, table_endpoint=table_endpoint, anchor_filter=anchor_filter, anchors=request.args.get("anchors", ""))
 
 
 @app.get("/table")
@@ -134,6 +168,11 @@ def table():
 @app.get("/table/without-anchor")
 def table_without_anchor():
     return render_table_page(without_anchor=True)
+
+
+@app.get("/table/anchors")
+def table_anchors():
+    return render_table_page(anchor_filter=True)
 
 
 @app.post("/save")
