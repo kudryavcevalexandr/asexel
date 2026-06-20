@@ -114,7 +114,7 @@ def table():
         elif pagination_pages and pagination_pages[-1] != "…":
             pagination_pages.append("…")
 
-    return render_template("table.html", filename=path.name.split("_", 1)[1], columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, editor_url=editor_url)
+    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url)
 
 
 @app.post("/save")
