@@ -12,9 +12,9 @@
     </div>
     <div class="columns-heading"><b>Колонки таблицы</b><button class="btn secondary" type="button" id="select-all-columns">Выделить все колонки</button></div>
     <div class="columns-grid">
-      {% for column in columns %}<label class="column-check"><input type="checkbox" name="columns" value="{{ column }}" checked> <span>{{ column }}</span></label>{% endfor %}
+      {% for column in columns %}<label class="column-check"><input type="checkbox" name="columns" value="{{ column }}" {% if column in default_columns %}checked{% endif %}> <span>{{ column }}</span></label>{% endfor %}
     </div>
-    <label class="check"><input type="checkbox" name="transition" value="true"> Только записи, где is_transition = True</label>
+    <label class="check"><input type="checkbox" name="transition" value="true" {% if default_transition %}checked{% endif %}> Только записи, где is_transition = True</label>
     <div class="actions"><button class="btn">Показать таблицу →</button><a class="btn danger" href="{{ url_for('index') }}">Выбрать другой файл</a></div>
   </form>
 </section>
