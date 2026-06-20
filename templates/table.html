@@ -2,7 +2,7 @@
 {% block title %}Таблица{% endblock %}
 {% block content %}
 <section class="card table-card">
-  <p class="muted table-step">ШАГ 2 ИЗ 2</p><h1 class="table-title">{{ filename }}{% if without_anchor %} — без anchor{% endif %}</h1>
+  <p class="muted table-step">ШАГ 2 ИЗ 2</p><h1 class="table-title">{{ filename }}{% if without_anchor %} — без anchor{% elif anchor_filter %} — anchors{% endif %}</h1>
   {% for message in get_flashed_messages() %}<div class="notice">{{ message }}</div>{% endfor %}
   <div class="actions table-actions"><a class="btn secondary" href="{{ editor_url }}">← Изменить фильтры</a>{% if without_anchor_url %}<a class="btn secondary" href="{{ without_anchor_url }}">Значения без anchor</a>{% endif %}<a class="btn secondary" href="{{ url_for('download') }}">Скачать файл</a><span class="scale-badge">Масштаб: {{ table_scale }}%</span></div>
   <div class="table-box"><table style="--table-scale: {{ table_scale / 100 }};"><thead><tr>{% for col in columns %}<th class="{% if loop.first %}first-column{% endif %}{% if col|string|lower == 'name_fixed' %} long-column{% endif %}">{{ col }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for cell in row %}<td class="{% if loop.first %}first-column{% endif %}{% if columns[loop.index0]|string|lower == 'name_fixed' %} long-column{% endif %}">{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
@@ -16,6 +16,7 @@
       <input type="hidden" name="batch_size" value="{{ batch_size }}">
       <input type="hidden" name="table_scale" value="{{ table_scale }}">
       {% if transition %}<input type="hidden" name="transition" value="true">{% endif %}
+      {% if anchor_filter %}<input type="hidden" name="anchors" value="{{ anchors }}">{% endif %}
       <label for="batch-page">Перейти к батчу</label>
       <input id="batch-page" type="number" name="page" value="{{ page }}" min="1" max="{{ pages }}" inputmode="numeric" required>
       <button class="btn secondary" type="submit">Перейти</button>
