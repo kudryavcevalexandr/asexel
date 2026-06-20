@@ -8,6 +8,7 @@
     <div class="form-grid">
       <label class="field">Лист<select name="sheet" id="sheet-select" data-editor-url="{{ url_for('editor') }}">{% for name in sheets %}<option value="{{ name }}" {% if name == sheet %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
       <label class="field">Размер батча<input type="number" name="batch_size" value="{{ batch_size }}" min="1" max="{{ max_batch_size }}" required></label>
+      <label class="field">Масштаб таблицы, %<input type="number" name="table_scale" value="{{ table_scale }}" min="{{ min_table_scale }}" max="{{ max_table_scale }}" step="5" required></label>
     </div>
     <div class="columns-heading"><b>Колонки таблицы</b><button class="btn secondary" type="button" id="select-all-columns">Выделить все колонки</button></div>
     <div class="columns-grid">
