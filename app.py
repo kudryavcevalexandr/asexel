@@ -15,7 +15,7 @@ UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 DEFAULT_BATCH_SIZE = 100
 MAX_BATCH_SIZE = 1000
-DEFAULT_TABLE_SCALE = 100
+DEFAULT_TABLE_SCALE = 80
 MIN_TABLE_SCALE = 50
 MAX_TABLE_SCALE = 150
 
@@ -69,11 +69,13 @@ def editor():
     except Exception:
         flash("Не удалось прочитать файл. Возможно, он поврежден.")
         return redirect(url_for("index"))
-    return render_template("editor.html", filename=path.name.split("_", 1)[1], sheets=sheets, sheet=sheet, columns=columns, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE, table_scale=DEFAULT_TABLE_SCALE, min_table_scale=MIN_TABLE_SCALE, max_table_scale=MAX_TABLE_SCALE)
+    default_columns = [column for column in columns if column in {"anchor_name", "name_fixed"}]
+    if not default_columns:
+        default_columns = columns
+    return render_template("editor.html", filename=path.name.split("_", 1)[1], sheets=sheets, sheet=sheet, columns=columns, default_columns=default_columns, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE, table_scale=DEFAULT_TABLE_SCALE, min_table_scale=MIN_TABLE_SCALE, max_table_scale=MAX_TABLE_SCALE, default_transition=True)
 
 
-@app.get("/table")
-def table():
+def render_table_page(*, without_anchor: bool = False):
     path = current_path()
     if not path:
         flash("Сначала загрузите файл.")
@@ -84,11 +86,13 @@ def table():
         if sheet not in excel.sheet_names:
             sheet = excel.sheet_names[0]
         frame = pd.read_excel(path, sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
-        requested_columns = request.args.getlist("columns")
-        visible = [column for column in frame.columns if column in requested_columns] if requested_columns else frame.columns.tolist()
-        frame = frame.loc[:, visible]
         if request.args.get("transition") == "true" and "is_transition" in frame.columns:
             frame = frame[frame["is_transition"].astype(str).str.strip().str.lower().eq("true")]
+        requested_columns = request.args.getlist("columns")
+        visible = [column for column in frame.columns if column in requested_columns] if requested_columns else frame.columns.tolist()
+        if without_anchor:
+            visible = [column for column in visible if "anchor" not in column.lower()]
+        frame = frame.loc[:, visible]
         batch_size = max(1, min(int(request.args.get("batch_size", DEFAULT_BATCH_SIZE)), MAX_BATCH_SIZE))
         page = max(1, int(request.args.get("page", 1)))
         table_scale = max(MIN_TABLE_SCALE, min(int(request.args.get("table_scale", DEFAULT_TABLE_SCALE)), MAX_TABLE_SCALE))
@@ -104,8 +108,12 @@ def table():
     offset = (page - 1) * batch_size
     rows = frame.iloc[offset:offset + batch_size].values.tolist()
     def page_url(number):
-        return url_for("table", sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=number)
+        endpoint = "table_without_anchor" if without_anchor else "table"
+        return url_for(endpoint, sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=number)
     editor_url = url_for("editor", sheet=sheet)
+    without_anchor_url = None
+    if not without_anchor:
+        without_anchor_url = url_for("table_without_anchor", sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=page)
 
     pagination_pages = []
     for number in range(1, pages + 1):
@@ -114,7 +122,18 @@ def table():
         elif pagination_pages and pagination_pages[-1] != "…":
             pagination_pages.append("…")
 
-    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url)
+    table_endpoint = "table_without_anchor" if without_anchor else "table"
+    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url, without_anchor=without_anchor, without_anchor_url=without_anchor_url, table_endpoint=table_endpoint)
+
+
+@app.get("/table")
+def table():
+    return render_table_page()
+
+
+@app.get("/table/without-anchor")
+def table_without_anchor():
+    return render_table_page(without_anchor=True)
 
 
 @app.post("/save")
