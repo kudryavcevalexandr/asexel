@@ -285,7 +285,19 @@ def save_changes():
         flash("Изменения сохранены.")
     except Exception as exc:
         flash(workbook_error_details("сохранить изменения", path, exc))
-    return redirect(url_for("editor", sheet=sheet, page=request.form.get("page", 1), transition=request.form.get("transition", "")))
+    table_endpoint = request.form.get("table_endpoint", "table")
+    if table_endpoint not in {"table", "table_without_anchor", "table_anchors"}:
+        table_endpoint = "table"
+    return redirect(url_for(
+        table_endpoint,
+        sheet=sheet,
+        columns=request.form.getlist("columns"),
+        batch_size=request.form.get("batch_size", DEFAULT_BATCH_SIZE),
+        table_scale=request.form.get("table_scale", DEFAULT_TABLE_SCALE),
+        transition=request.form.get("transition", ""),
+        anchors=request.form.get("anchors", "") if table_endpoint == "table_anchors" else None,
+        page=request.form.get("page", 1),
+    ))
 
 
 @app.get("/download")
