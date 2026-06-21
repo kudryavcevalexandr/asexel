@@ -5,9 +5,60 @@
   <h1>Редактируйте Excel прямо в браузере</h1>
   <p class="muted">Загрузите книгу .xlsx, настройте фильтры и просмотрите данные.</p>
   {% for message in get_flashed_messages() %}<div class="notice">{{ message }}</div>{% endfor %}
-  <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+  <div class="notice upload-error" id="upload-error" hidden></div>
+  <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" id="upload-form">
     <label class="drop"><b>Выберите файл .xlsx</b><br><br><input type="file" name="excel_file" accept=".xlsx" required></label>
-    <button class="btn">Загрузить и открыть →</button>
+    <button class="btn" id="upload-button">Загрузить и открыть →</button>
   </form>
 </section>
+<script>
+  const uploadForm = document.getElementById("upload-form");
+  const uploadError = document.getElementById("upload-error");
+  const uploadButton = document.getElementById("upload-button");
+
+  function showUploadError(message) {
+    uploadError.textContent = message;
+    uploadError.hidden = false;
+  }
+
+  uploadForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    uploadError.hidden = true;
+    const selectedFile = uploadForm.elements.excel_file.files[0];
+    if (!selectedFile) {
+      showUploadError("Файл не выбран. Выберите книгу Excel .xlsx и повторите загрузку.");
+      return;
+    }
+    if (!selectedFile.name.toLowerCase().endsWith(".xlsx")) {
+      showUploadError(`Выбран файл «${selectedFile.name}», но поддерживается только формат .xlsx.`);
+      return;
+    }
+    const originalButtonText = uploadButton.textContent;
+    uploadButton.disabled = true;
+    uploadButton.textContent = "Загрузка…";
+    try {
+      const response = await fetch(uploadForm.action, {
+        method: "POST",
+        body: new FormData(uploadForm),
+        headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        showUploadError(data.message || `Сервер отклонил файл с кодом ${response.status}.`);
+        return;
+      }
+      window.location.assign(data.redirect);
+    } catch (error) {
+      showUploadError(
+        `Браузер не смог передать файл «${selectedFile.name}» на сервер. ` +
+        "Частая причина на Android/Chrome — выбранный файл изменился, синхронизируется облаком или открыт другим приложением во время загрузки (ERR_UPLOAD_FILE_CHANGED). " +
+        "Скопируйте файл в локальную папку Downloads/Загрузки, закройте Excel/Google Sheets/файловый менеджер и выберите эту копию заново. " +
+        `Технические детали: ${error.name}: ${error.message}`
+      );
+    } finally {
+      uploadButton.disabled = false;
+      uploadButton.textContent = originalButtonText;
+    }
+  });
+</script>
 {% endblock %}
