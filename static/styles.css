@@ -49,3 +49,8 @@ tbody tr:nth-child(even){background:#f8fafc}
 .batch-jump .btn{padding:7px 10px}
 h1{margin-top:0}
 input[type=file]{max-width:100%}
+
+.small-note{font-size:13px}
+.boolean-columns-grid{max-height:220px}
+.column-check.is-disabled{opacity:.5;background:#f1f5f9}
+.column-check.is-disabled span{text-decoration:line-through}

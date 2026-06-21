@@ -13,6 +13,7 @@
     <form class="batch-jump" method="get" action="{{ url_for(table_endpoint) }}">
       <input type="hidden" name="sheet" value="{{ sheet }}">
       {% for column in columns %}<input type="hidden" name="columns" value="{{ column }}">{% endfor %}
+      {% for column in boolean_columns %}<input type="hidden" name="boolean_columns" value="{{ column }}">{% endfor %}
       <input type="hidden" name="batch_size" value="{{ batch_size }}">
       <input type="hidden" name="table_scale" value="{{ table_scale }}">
       {% if transition %}<input type="hidden" name="transition" value="true">{% endif %}
