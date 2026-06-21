@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unicodedata
+import re
 from pathlib import Path
 from uuid import uuid4
 from zipfile import BadZipFile
@@ -102,7 +103,10 @@ def anchor_filter_column(columns) -> str | None:
 
 
 def normalize_excel_text(text) -> str:
-    return " ".join(unicodedata.normalize("NFKC", str(text)).split())
+    text = str(text)
+    # Вычищаем невидимые символы (zero-width spaces, мягкие переносы и BOM)
+    text = re.sub(r'[\u200b-\u200f\ufeff\xad]', '', text)
+    return " ".join(unicodedata.normalize("NFKC", text).split())
 
 
 def current_path() -> Path | None:
