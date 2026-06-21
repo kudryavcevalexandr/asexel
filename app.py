@@ -13,8 +13,31 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "change-me-in-production")
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
-UPLOAD_DIR = Path(__file__).parent / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+def resolve_upload_dir() -> Path:
+    configured_dir = os.getenv("EXCEL_STUDIO_UPLOAD_DIR")
+    candidates = []
+    if configured_dir:
+        candidates.append(Path(configured_dir).expanduser())
+    candidates.append(Path(__file__).parent / "uploads")
+    candidates.append(Path(tempfile.gettempdir()) / "excel-studio-uploads")
+
+    errors = []
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / f".write-test-{uuid4().hex}"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return candidate
+        except OSError as exc:
+            errors.append(f"{candidate}: {type(exc).__name__}: {exc}")
+
+    raise RuntimeError("Не удалось найти папку для временных Excel-файлов с правами на запись: " + "; ".join(errors))
+
+
+UPLOAD_DIR = resolve_upload_dir()
 DEFAULT_BATCH_SIZE = 100
 MAX_BATCH_SIZE = 1000
 DEFAULT_TABLE_SCALE = 80
