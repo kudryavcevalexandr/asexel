@@ -6,8 +6,6 @@ import unicodedata
 import re
 from pathlib import Path
 from uuid import uuid4
-from zipfile import BadZipFile
-
 import pandas as pd
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.utils import secure_filename
@@ -18,12 +16,12 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 
 
 def resolve_upload_dir() -> Path:
-    configured_dir = os.getenv("EXCEL_STUDIO_UPLOAD_DIR")
+    configured_dir = os.getenv("CSV_STUDIO_UPLOAD_DIR") or os.getenv("EXCEL_STUDIO_UPLOAD_DIR")
     candidates = []
     if configured_dir:
         candidates.append(Path(configured_dir).expanduser())
     candidates.append(Path(__file__).parent / "uploads")
-    candidates.append(Path(tempfile.gettempdir()) / "excel-studio-uploads")
+    candidates.append(Path(tempfile.gettempdir()) / "csv-studio-uploads")
 
     errors = []
     for candidate in candidates:
@@ -36,7 +34,7 @@ def resolve_upload_dir() -> Path:
         except OSError as exc:
             errors.append(f"{candidate}: {type(exc).__name__}: {exc}")
 
-    raise RuntimeError("Не удалось найти папку для временных Excel-файлов с правами на запись: " + "; ".join(errors))
+    raise RuntimeError("Не удалось найти папку для временных CSV-файлов с правами на запись: " + "; ".join(errors))
 
 
 UPLOAD_DIR = resolve_upload_dir()
@@ -50,7 +48,7 @@ TRUE_VALUES = {"true", "1", "yes", "y", "да", "истина"}
 FALSE_VALUES = {"false", "0", "no", "n", "нет", "ложь"}
 
 
-def workbook_error_details(action: str, path: Path, exc: Exception) -> str:
+def csv_error_details(action: str, path: Path, exc: Exception) -> str:
     reason = f"{type(exc).__name__}: {exc}"
     file_state = "файл отсутствует"
     if path.exists():
@@ -60,14 +58,21 @@ def workbook_error_details(action: str, path: Path, exc: Exception) -> str:
             file_state = f"не удалось получить размер файла: {type(stat_exc).__name__}: {stat_exc}"
 
     hints = []
-    if isinstance(exc, BadZipFile) or "not a zip file" in str(exc).lower():
-        hints.append("Excel-движок получил невалидный ZIP-контейнер .xlsx; часто это происходит, если вместо настоящего .xlsx загружен .xls/CSV/HTML с расширением .xlsx или предыдущая запись файла оборвалась")
     if isinstance(exc, PermissionError):
         hints.append("у процесса нет прав на запись/чтение файла или файл заблокирован операционной системой")
     if not hints:
-        hints.append("проверьте формат .xlsx, выбранный лист, права на папку uploads и свободное место на диске")
+        hints.append("проверьте формат .csv, кодировку UTF-8, права на папку uploads и свободное место на диске")
 
     return f"Не удалось {action}. Технические детали: {reason}. Состояние файла на сервере: {file_state}. Что проверить: {'; '.join(hints)}."
+
+
+def read_csv_file(path: Path, **kwargs) -> pd.DataFrame:
+    return pd.read_csv(path, dtype=str, keep_default_na=False, **kwargs)
+
+
+def write_csv_file(frame: pd.DataFrame, path: Path) -> None:
+    frame.to_csv(path, index=False)
+
 
 def boolean_checkbox_values(value: str) -> tuple[bool, str, str] | None:
     normalized = str(value).strip().lower()
@@ -102,7 +107,7 @@ def anchor_filter_column(columns) -> str | None:
     return None
 
 
-def normalize_excel_text(text) -> str:
+def normalize_csv_text(text) -> str:
     text = str(text)
     # Вычищаем невидимые символы (zero-width spaces, мягкие переносы и BOM)
     text = re.sub(r'[\u200b-\u200f\ufeff\xad]', '', text)
@@ -135,13 +140,13 @@ def upload_error(message: str, status_code: int = 400):
 
 @app.post("/upload")
 def upload():
-    file = request.files.get("excel_file")
+    file = request.files.get("csv_file")
     if not file or not file.filename:
-        return upload_error("Файл не был передан браузером. Выберите файл .xlsx еще раз и повторите загрузку.")
+        return upload_error("Файл не был передан браузером. Выберите файл .csv еще раз и повторите загрузку.")
     original_name = file.filename
-    if Path(original_name).suffix.lower() != ".xlsx":
-        return upload_error(f"Выбран файл «{original_name}», но поддерживаются только книги Excel в формате .xlsx.")
-    name = f"{uuid4().hex}_{secure_filename(original_name) or 'workbook.xlsx'}"
+    if Path(original_name).suffix.lower() != ".csv":
+        return upload_error(f"Выбран файл «{original_name}», но поддерживается только формат .csv.")
+    name = f"{uuid4().hex}_{secure_filename(original_name) or 'data.csv'}"
     path = UPLOAD_DIR / name
     try:
         file.save(path)
@@ -149,10 +154,10 @@ def upload():
         path.unlink(missing_ok=True)
         return upload_error(f"Не удалось получить выбранный файл «{original_name}» от браузера. Детали: {exc}", 500)
     try:
-        pd.ExcelFile(path, engine="openpyxl")
+        read_csv_file(path, nrows=1)
     except Exception as exc:
         path.unlink(missing_ok=True)
-        return upload_error(f"Файл «{original_name}» получен, но openpyxl не смог открыть его как .xlsx. Проверьте, что это именно книга Excel .xlsx, а не .xls/.xlsm/CSV с другим расширением, и что файл не зашифрован паролем. Технические детали: {type(exc).__name__}: {exc}")
+        return upload_error(f"Файл «{original_name}» получен, но не может быть прочитан как CSV. Проверьте формат .csv и кодировку UTF-8. Технические детали: {type(exc).__name__}: {exc}")
     session.clear()
     session["current_file"] = name
     editor_url = url_for("editor")
@@ -168,19 +173,14 @@ def editor():
         flash("Сначала загрузите файл.")
         return redirect(url_for("index"))
     try:
-        excel = pd.ExcelFile(path, engine="openpyxl")
-        sheets = excel.sheet_names
-        sheet = request.args.get("sheet")
-        if sheet not in sheets:
-            sheet = sheets[0]
-        columns = pd.read_excel(path, sheet_name=sheet, nrows=0, engine="openpyxl").columns.tolist()
+        columns = read_csv_file(path, nrows=0).columns.tolist()
     except Exception as exc:
-        flash(workbook_error_details("прочитать загруженный файл", path, exc))
+        flash(csv_error_details("прочитать загруженный CSV-файл", path, exc))
         return redirect(url_for("index"))
     default_columns = [column for column in columns if column in {"anchor_name", "name_fixed"}]
     if not default_columns:
         default_columns = columns
-    return render_template("editor.html", filename=path.name.split("_", 1)[1], sheets=sheets, sheet=sheet, columns=columns, default_columns=default_columns, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE, table_scale=DEFAULT_TABLE_SCALE, min_table_scale=MIN_TABLE_SCALE, max_table_scale=MAX_TABLE_SCALE, default_transition=True)
+    return render_template("editor.html", filename=path.name.split("_", 1)[1], sheet="CSV", columns=columns, default_columns=default_columns, batch_size=DEFAULT_BATCH_SIZE, max_batch_size=MAX_BATCH_SIZE, table_scale=DEFAULT_TABLE_SCALE, min_table_scale=MIN_TABLE_SCALE, max_table_scale=MAX_TABLE_SCALE, default_transition=True)
 
 
 def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = False):
@@ -189,11 +189,8 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
         flash("Сначала загрузите файл.")
         return redirect(url_for("index"))
     try:
-        excel = pd.ExcelFile(path, engine="openpyxl")
-        sheet = request.args.get("sheet")
-        if sheet not in excel.sheet_names:
-            sheet = excel.sheet_names[0]
-        frame = pd.read_excel(path, sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
+        sheet = "CSV"
+        frame = read_csv_file(path)
         if request.args.get("transition") == "true" and "is_transition" in frame.columns:
             frame = frame[frame["is_transition"].astype(str).str.strip().str.lower().eq("true")]
         anchors_raw = request.args.get("anchors", "")
@@ -220,7 +217,7 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
         flash("Размер батча и номер страницы должны быть целыми числами.")
         return redirect(url_for("editor"))
     except Exception as exc:
-        flash(workbook_error_details("прочитать файл для таблицы", path, exc))
+        flash(csv_error_details("прочитать CSV-файл для таблицы", path, exc))
         return redirect(url_for("editor"))
     total = len(frame)
     pages = max(1, (total + batch_size - 1) // batch_size)
@@ -298,10 +295,8 @@ def save_changes():
         return redirect(url_for("index"))
     sheet = request.form.get("sheet", "")
     try:
-        books = pd.read_excel(path, sheet_name=None, dtype=str, keep_default_na=False, engine="openpyxl")
-        if sheet not in books:
-            raise ValueError("Лист не найден")
-        frame = books[sheet]
+        sheet = "CSV"
+        frame = read_csv_file(path)
         pending_boolean_updates = {}
         requested_updates = {}
         for key, value in request.form.items():
@@ -330,22 +325,17 @@ def save_changes():
             flash("Изменений не обнаружено: значения в файле уже совпадают с отправленными.")
             return redirect_after_save(sheet)
 
-        books[sheet] = frame
         tmp_path = path.with_name(f"{path.stem}_tmp{path.suffix}")
         try:
-            with pd.ExcelWriter(tmp_path, engine="xlsxwriter") as writer:
-                for name, book_frame in books.items():
-                    book_frame.to_excel(writer, sheet_name=name, index=False)
+            write_csv_file(frame, tmp_path)
             if hasattr(os, "sync"):
                 os.sync()
 
-            with pd.ExcelFile(tmp_path, engine="openpyxl"):
-                pass
-            saved_frame = pd.read_excel(tmp_path, sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
+            saved_frame = read_csv_file(tmp_path)
             not_saved_cells = []
             for row, col, expected_value in changed_cells:
                 saved_value = str(saved_frame.iat[row, col])
-                if normalize_excel_text(saved_value) != normalize_excel_text(expected_value):
+                if normalize_csv_text(saved_value) != normalize_csv_text(expected_value):
                     column_name = saved_frame.columns[col]
                     not_saved_cells.append(f"строка {row + 2}, колонка «{column_name}»: ожидалось «{expected_value}», в файле «{saved_value}»")
             if not_saved_cells:
@@ -361,7 +351,7 @@ def save_changes():
 
         flash(f"Изменения сохранены и проверены: обновлено ячеек — {len(changed_cells)}.")
     except Exception as exc:
-        flash(workbook_error_details("сохранить изменения", path, exc))
+        flash(csv_error_details("сохранить изменения", path, exc))
     return redirect_after_save(sheet)
 
 
