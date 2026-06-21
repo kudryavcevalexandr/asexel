@@ -14,10 +14,6 @@
     <div class="columns-grid">
       {% for column in columns %}<label class="column-check"><input type="checkbox" name="columns" value="{{ column }}" {% if column in default_columns %}checked{% endif %}> <span>{{ column }}</span></label>{% endfor %}
     </div>
-    <div class="columns-heading"><b>Формат Истина/Ложь</b><span class="muted small-note">Применяется к выбранным колонкам</span></div>
-    <div class="columns-grid boolean-columns-grid">
-      {% for column in columns %}<label class="column-check boolean-column-check"><input type="checkbox" name="boolean_columns" value="{{ column }}" data-column="{{ column }}"> <span>{{ column }}</span></label>{% endfor %}
-    </div>
     <label class="check"><input type="checkbox" name="transition" value="true" {% if default_transition %}checked{% endif %}> Только записи, где is_transition = True</label>
     <label class="field anchors-field">Anchors для отдельной страницы<textarea name="anchors" rows="4" placeholder="Введите anchors: по одному в строке, через запятую или ;"></textarea></label>
     <div class="actions"><button class="btn">Показать таблицу →</button><button class="btn secondary" type="submit" formaction="{{ url_for('table_anchors') }}">Открыть страницу anchors →</button><a class="btn danger" href="{{ url_for('index') }}">Выбрать другой файл</a></div>
@@ -29,24 +25,8 @@
     window.location.href = `${sheetSelect.dataset.editorUrl}?sheet=${encodeURIComponent(sheetSelect.value)}`;
   });
   const columnCheckboxes = document.querySelectorAll('input[name="columns"]');
-  const booleanColumnLabels = document.querySelectorAll(".boolean-column-check");
-
-  function syncBooleanColumns() {
-    const selected = new Set(Array.from(columnCheckboxes).filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value));
-    booleanColumnLabels.forEach((label) => {
-      const checkbox = label.querySelector('input[name="boolean_columns"]');
-      const isSelected = selected.has(checkbox.value);
-      label.classList.toggle("is-disabled", !isSelected);
-      checkbox.disabled = !isSelected;
-      if (!isSelected) checkbox.checked = false;
-    });
-  }
-
   document.querySelector("#select-all-columns").addEventListener("click", () => {
     columnCheckboxes.forEach((checkbox) => checkbox.checked = true);
-    syncBooleanColumns();
   });
-  columnCheckboxes.forEach((checkbox) => checkbox.addEventListener("change", syncBooleanColumns));
-  syncBooleanColumns();
 </script>
 {% endblock %}

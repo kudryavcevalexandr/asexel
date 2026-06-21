@@ -23,13 +23,15 @@ TRUE_VALUES = {"true", "1", "yes", "y", "да", "истина"}
 FALSE_VALUES = {"false", "0", "no", "n", "нет", "ложь"}
 
 
-def format_boolean_value(value: str) -> str:
+def boolean_checkbox_values(value: str) -> tuple[bool, str, str] | None:
     normalized = str(value).strip().lower()
     if normalized in TRUE_VALUES:
-        return "Истина"
+        false_value = "0" if normalized == "1" else "Ложь" if normalized == "истина" else "False"
+        return True, value, false_value
     if normalized in FALSE_VALUES:
-        return "Ложь"
-    return value
+        true_value = "1" if normalized == "0" else "Истина" if normalized == "ложь" else "True"
+        return False, true_value, value
+    return None
 
 
 def parse_anchor_filter(raw: str) -> list[str]:
@@ -135,14 +137,10 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
             frame = frame[frame[anchor_column].astype(str).str.strip().isin(anchors)]
         requested_columns = request.args.getlist("columns")
         visible = [column for column in frame.columns if column in requested_columns] if requested_columns else frame.columns.tolist()
-        requested_boolean_columns = request.args.getlist("boolean_columns")
-        boolean_columns = [column for column in visible if column in requested_boolean_columns]
         if without_anchor:
             visible = [column for column in visible if "anchor" not in column.lower()]
-            boolean_columns = [column for column in boolean_columns if column in visible]
+        column_indexes = {column: int(frame.columns.get_loc(column)) for column in visible}
         frame = frame.loc[:, visible]
-        for column in boolean_columns:
-            frame[column] = frame[column].map(format_boolean_value)
         batch_size = max(1, min(int(request.args.get("batch_size", DEFAULT_BATCH_SIZE)), MAX_BATCH_SIZE))
         page = max(1, int(request.args.get("page", 1)))
         table_scale = max(MIN_TABLE_SCALE, min(int(request.args.get("table_scale", DEFAULT_TABLE_SCALE)), MAX_TABLE_SCALE))
@@ -156,14 +154,28 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
     pages = max(1, (total + batch_size - 1) // batch_size)
     page = min(page, pages)
     offset = (page - 1) * batch_size
-    rows = frame.iloc[offset:offset + batch_size].values.tolist()
+    rows = []
+    for row_index, row in frame.iloc[offset:offset + batch_size].iterrows():
+        cells = []
+        for column, value in row.items():
+            boolean_values = boolean_checkbox_values(value)
+            cells.append({
+                "value": value,
+                "column": column,
+                "column_index": column_indexes[column],
+                "is_boolean": boolean_values is not None,
+                "checked": boolean_values[0] if boolean_values else False,
+                "true_value": boolean_values[1] if boolean_values else "",
+                "false_value": boolean_values[2] if boolean_values else "",
+            })
+        rows.append({"index": int(row_index), "cells": cells})
     def page_url(number):
         endpoint = "table_anchors" if anchor_filter else "table_without_anchor" if without_anchor else "table"
-        return url_for(endpoint, sheet=sheet, columns=visible, boolean_columns=boolean_columns, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), anchors=request.args.get("anchors", "") if anchor_filter else None, page=number)
+        return url_for(endpoint, sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), anchors=request.args.get("anchors", "") if anchor_filter else None, page=number)
     editor_url = url_for("editor", sheet=sheet)
     without_anchor_url = None
     if not without_anchor:
-        without_anchor_url = url_for("table_without_anchor", sheet=sheet, columns=visible, boolean_columns=boolean_columns, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=page)
+        without_anchor_url = url_for("table_without_anchor", sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=page)
 
     pagination_pages = []
     for number in range(1, pages + 1):
@@ -173,7 +185,7 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
             pagination_pages.append("…")
 
     table_endpoint = "table_anchors" if anchor_filter else "table_without_anchor" if without_anchor else "table"
-    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, boolean_columns=boolean_columns, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url, without_anchor=without_anchor, without_anchor_url=without_anchor_url, table_endpoint=table_endpoint, anchor_filter=anchor_filter, anchors=request.args.get("anchors", ""))
+    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url, without_anchor=without_anchor, without_anchor_url=without_anchor_url, table_endpoint=table_endpoint, anchor_filter=anchor_filter, anchors=request.args.get("anchors", ""))
 
 
 @app.get("/table")
@@ -202,11 +214,19 @@ def save_changes():
         if sheet not in books:
             raise ValueError("Лист не найден")
         frame = books[sheet]
+        pending_boolean_updates = {}
         for key, value in request.form.items():
-            if not key.startswith("cell_"):
-                continue
-            _, row, col = key.split("_")
-            frame.iat[int(row), int(col)] = value
+            if key.startswith("bool_false_"):
+                _, _, row, col = key.split("_")
+                pending_boolean_updates[(int(row), int(col))] = value
+            elif key.startswith("bool_"):
+                _, row, col = key.split("_")
+                pending_boolean_updates[(int(row), int(col))] = value
+            elif key.startswith("cell_"):
+                _, row, col = key.split("_")
+                frame.iat[int(row), int(col)] = value
+        for (row, col), value in pending_boolean_updates.items():
+            frame.iat[row, col] = value
         books[sheet] = frame
         with pd.ExcelWriter(path, engine="openpyxl") as writer:
             for name, frame in books.items():
