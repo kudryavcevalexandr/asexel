@@ -8,7 +8,12 @@
   <form method="post" action="{{ url_for('save_changes') }}">
     <input type="hidden" name="sheet" value="{{ sheet }}">
     <input type="hidden" name="page" value="{{ page }}">
+    <input type="hidden" name="table_endpoint" value="{{ table_endpoint }}">
+    {% for column in columns %}<input type="hidden" name="columns" value="{{ column }}">{% endfor %}
+    <input type="hidden" name="batch_size" value="{{ batch_size }}">
+    <input type="hidden" name="table_scale" value="{{ table_scale }}">
     {% if transition %}<input type="hidden" name="transition" value="true">{% endif %}
+    {% if anchor_filter %}<input type="hidden" name="anchors" value="{{ anchors }}">{% endif %}
     <div class="table-box"><table style="--table-scale: {{ table_scale / 100 }};"><thead><tr>{% for col in columns %}<th class="{% if loop.first %}first-column{% endif %}{% if col|string|lower == 'name_fixed' %} long-column{% endif %}">{{ col }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for cell in row.cells %}<td class="{% if loop.first %}first-column{% endif %}{% if columns[loop.index0]|string|lower == 'name_fixed' %} long-column{% endif %}">{% if cell.is_boolean %}<input type="hidden" name="bool_false_{{ row.index }}_{{ cell.column_index }}" value="{{ cell.false_value }}"><label class="boolean-cell"><input type="checkbox" name="bool_{{ row.index }}_{{ cell.column_index }}" value="{{ cell.true_value }}" {% if cell.checked %}checked{% endif %}><span class="sr-only">{{ cell.value }}</span></label>{% else %}<textarea class="cell-input" name="cell_{{ row.index }}_{{ cell.column_index }}">{{ cell.value }}</textarea>{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
     <div class="actions"><button class="btn" type="submit">Сохранить изменения</button></div>
   </form>
