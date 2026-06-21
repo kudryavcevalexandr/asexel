@@ -5,8 +5,8 @@
   <p class="muted">ШАГ 1 ИЗ 2</p><h1>Настройте выборку</h1><p class="muted">{{ filename }}</p>
   {% for message in get_flashed_messages() %}<div class="notice">{{ message }}</div>{% endfor %}
   <form method="get" action="{{ url_for('table') }}">
+    <input type="hidden" name="sheet" value="{{ sheet }}">
     <div class="form-grid">
-      <label class="field">Лист<select name="sheet" id="sheet-select" data-editor-url="{{ url_for('editor') }}">{% for name in sheets %}<option value="{{ name }}" {% if name == sheet %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
       <label class="field">Размер батча<input type="number" name="batch_size" value="{{ batch_size }}" min="1" max="{{ max_batch_size }}" required></label>
       <label class="field">Масштаб таблицы, %<input type="number" name="table_scale" value="{{ table_scale }}" min="{{ min_table_scale }}" max="{{ max_table_scale }}" step="5" required></label>
     </div>
@@ -20,10 +20,6 @@
   </form>
 </section>
 <script>
-  const sheetSelect = document.querySelector("#sheet-select");
-  sheetSelect.addEventListener("change", () => {
-    window.location.href = `${sheetSelect.dataset.editorUrl}?sheet=${encodeURIComponent(sheetSelect.value)}`;
-  });
   const columnCheckboxes = document.querySelectorAll('input[name="columns"]');
   document.querySelector("#select-all-columns").addEventListener("click", () => {
     columnCheckboxes.forEach((checkbox) => checkbox.checked = true);
