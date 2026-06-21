@@ -35,7 +35,7 @@ th{position:sticky;top:0;background:#f1f5f9;z-index:2;box-shadow:0 1px 0 #dfe5ed
 th,td{border-right:1px solid #e5e9ef;border-bottom:1px solid #e5e9ef;padding:10px;text-align:left;vertical-align:top}
 th{height:44px;max-height:44px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
 td{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
-th.first-column,td.first-column{width:15%;min-width:120px}
+th.first-column,td.first-column{width:10%;min-width:80px}
 th.long-column,td.long-column{width:100%}
 tbody tr:nth-child(even){background:#f8fafc}
 .pagination{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0}
@@ -54,5 +54,5 @@ input[type=file]{max-width:100%}
 .boolean-cell input{width:18px;height:18px;margin:0;cursor:pointer}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
-.cell-input{width:100%;min-width:180px;min-height:42px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font:inherit;color:inherit;resize:vertical}
+.cell-input{width:100%;min-width:180px;min-height:42px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font:inherit;color:inherit;resize:none;overflow:hidden}
 .cell-input:focus{outline:2px solid #93c5fd;border-color:#2563eb}

@@ -36,4 +36,15 @@
     {% if page < pages %}<a class="btn secondary" href="{{ page_url(page+1) }}">Вперёд →</a>{% endif %}
   </div>
 </section>
+<script>
+  const resizeCellInput = (input) => {
+    input.style.height = "auto";
+    input.style.height = `${input.scrollHeight + 2}px`;
+  };
+
+  document.querySelectorAll(".cell-input").forEach((input) => {
+    resizeCellInput(input);
+    input.addEventListener("input", () => resizeCellInput(input));
+  });
+</script>
 {% endblock %}
