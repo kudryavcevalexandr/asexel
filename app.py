@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from uuid import uuid4
+from zipfile import BadZipFile
 
 import pandas as pd
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
@@ -22,6 +24,25 @@ ANCHOR_COLUMNS = ("anchor_name", "anchor", "anchors")
 TRUE_VALUES = {"true", "1", "yes", "y", "да", "истина"}
 FALSE_VALUES = {"false", "0", "no", "n", "нет", "ложь"}
 
+
+def workbook_error_details(action: str, path: Path, exc: Exception) -> str:
+    reason = f"{type(exc).__name__}: {exc}"
+    file_state = "файл отсутствует"
+    if path.exists():
+        try:
+            file_state = f"размер файла: {path.stat().st_size} байт"
+        except OSError as stat_exc:
+            file_state = f"не удалось получить размер файла: {type(stat_exc).__name__}: {stat_exc}"
+
+    hints = []
+    if isinstance(exc, BadZipFile) or "not a zip file" in str(exc).lower():
+        hints.append("openpyxl получил невалидный ZIP-контейнер .xlsx; часто это происходит, если вместо настоящего .xlsx загружен .xls/CSV/HTML с расширением .xlsx или предыдущая запись файла оборвалась")
+    if isinstance(exc, PermissionError):
+        hints.append("у процесса нет прав на запись/чтение файла или файл заблокирован операционной системой")
+    if not hints:
+        hints.append("проверьте формат .xlsx, выбранный лист, права на папку uploads и свободное место на диске")
+
+    return f"Не удалось {action}. Технические детали: {reason}. Состояние файла на сервере: {file_state}. Что проверить: {'; '.join(hints)}."
 
 def boolean_checkbox_values(value: str) -> tuple[bool, str, str] | None:
     normalized = str(value).strip().lower()
@@ -121,8 +142,8 @@ def editor():
         if sheet not in sheets:
             sheet = sheets[0]
         columns = pd.read_excel(path, sheet_name=sheet, nrows=0, engine="openpyxl").columns.tolist()
-    except Exception:
-        flash("Не удалось прочитать файл. Возможно, он поврежден.")
+    except Exception as exc:
+        flash(workbook_error_details("прочитать загруженный файл", path, exc))
         return redirect(url_for("index"))
     default_columns = [column for column in columns if column in {"anchor_name", "name_fixed"}]
     if not default_columns:
@@ -166,8 +187,8 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
     except (ValueError, TypeError):
         flash("Размер батча и номер страницы должны быть целыми числами.")
         return redirect(url_for("editor"))
-    except Exception:
-        flash("Не удалось прочитать файл. Возможно, он поврежден.")
+    except Exception as exc:
+        flash(workbook_error_details("прочитать файл для таблицы", path, exc))
         return redirect(url_for("editor"))
     total = len(frame)
     pages = max(1, (total + batch_size - 1) // batch_size)
@@ -247,12 +268,23 @@ def save_changes():
         for (row, col), value in pending_boolean_updates.items():
             frame.iat[row, col] = value
         books[sheet] = frame
-        with pd.ExcelWriter(path, engine="openpyxl") as writer:
-            for name, frame in books.items():
-                frame.to_excel(writer, sheet_name=name, index=False)
+        temp_name = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx", dir=UPLOAD_DIR) as temp_file:
+                temp_name = temp_file.name
+            temp_path = Path(temp_name)
+            with pd.ExcelWriter(temp_path, engine="openpyxl") as writer:
+                for name, frame in books.items():
+                    frame.to_excel(writer, sheet_name=name, index=False)
+            with pd.ExcelFile(temp_path, engine="openpyxl"):
+                pass
+            temp_path.replace(path)
+        finally:
+            if temp_name:
+                Path(temp_name).unlink(missing_ok=True)
         flash("Изменения сохранены.")
     except Exception as exc:
-        flash(f"Не удалось сохранить изменения: {exc}")
+        flash(workbook_error_details("сохранить изменения", path, exc))
     return redirect(url_for("editor", sheet=sheet, page=request.form.get("page", 1), transition=request.form.get("transition", "")))
 
 
