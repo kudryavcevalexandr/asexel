@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import unicodedata
 from pathlib import Path
 from uuid import uuid4
 from zipfile import BadZipFile
@@ -98,6 +99,10 @@ def anchor_filter_column(columns) -> str | None:
         if "anchor" in str(column).lower():
             return column
     return None
+
+
+def normalize_excel_text(text) -> str:
+    return " ".join(unicodedata.normalize("NFKC", str(text)).split())
 
 
 def current_path() -> Path | None:
@@ -322,33 +327,33 @@ def save_changes():
             return redirect_after_save(sheet)
 
         books[sheet] = frame
-        temp_name = None
+        tmp_path = path.with_name(f"{path.stem}_tmp{path.suffix}")
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx", dir=UPLOAD_DIR) as temp_file:
-                temp_name = temp_file.name
-            temp_path = Path(temp_name)
-            with pd.ExcelWriter(temp_path, engine="openpyxl") as writer:
-                for name, frame in books.items():
-                    frame.to_excel(writer, sheet_name=name, index=False)
-            with pd.ExcelFile(temp_path, engine="openpyxl"):
-                pass
-            temp_path.replace(path)
-        finally:
-            if temp_name:
-                Path(temp_name).unlink(missing_ok=True)
+            with pd.ExcelWriter(tmp_path, engine="openpyxl") as writer:
+                for name, book_frame in books.items():
+                    book_frame.to_excel(writer, sheet_name=name, index=False)
+            if hasattr(os, "sync"):
+                os.sync()
 
-        saved_frame = pd.read_excel(path, sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
-        not_saved_cells = []
-        for row, col, expected_value in changed_cells:
-            saved_value = str(saved_frame.iat[row, col])
-            if saved_value != expected_value:
-                column_name = saved_frame.columns[col]
-                not_saved_cells.append(f"строка {row + 2}, колонка «{column_name}»: ожидалось «{expected_value}», в файле «{saved_value}»")
-        if not_saved_cells:
-            details = "; ".join(not_saved_cells[:5])
-            if len(not_saved_cells) > 5:
-                details += f"; и еще {len(not_saved_cells) - 5}"
-            raise ValueError(f"Проверка после записи показала, что часть изменений не попала в файл: {details}")
+            with pd.ExcelFile(tmp_path, engine="openpyxl"):
+                pass
+            saved_frame = pd.read_excel(tmp_path, sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
+            not_saved_cells = []
+            for row, col, expected_value in changed_cells:
+                saved_value = str(saved_frame.iat[row, col])
+                if normalize_excel_text(saved_value) != normalize_excel_text(expected_value):
+                    column_name = saved_frame.columns[col]
+                    not_saved_cells.append(f"строка {row + 2}, колонка «{column_name}»: ожидалось «{expected_value}», в файле «{saved_value}»")
+            if not_saved_cells:
+                details = "; ".join(not_saved_cells[:5])
+                if len(not_saved_cells) > 5:
+                    details += f"; и еще {len(not_saved_cells) - 5}"
+                raise ValueError(f"Проверка после записи показала, что часть изменений не попала во временный файл: {details}")
+
+            os.replace(tmp_path, path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
         flash(f"Изменения сохранены и проверены: обновлено ячеек — {len(changed_cells)}.")
     except Exception as exc:
