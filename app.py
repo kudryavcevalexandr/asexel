@@ -60,7 +60,7 @@ def workbook_error_details(action: str, path: Path, exc: Exception) -> str:
 
     hints = []
     if isinstance(exc, BadZipFile) or "not a zip file" in str(exc).lower():
-        hints.append("openpyxl получил невалидный ZIP-контейнер .xlsx; часто это происходит, если вместо настоящего .xlsx загружен .xls/CSV/HTML с расширением .xlsx или предыдущая запись файла оборвалась")
+        hints.append("Excel-движок получил невалидный ZIP-контейнер .xlsx; часто это происходит, если вместо настоящего .xlsx загружен .xls/CSV/HTML с расширением .xlsx или предыдущая запись файла оборвалась")
     if isinstance(exc, PermissionError):
         hints.append("у процесса нет прав на запись/чтение файла или файл заблокирован операционной системой")
     if not hints:
@@ -329,7 +329,7 @@ def save_changes():
         books[sheet] = frame
         tmp_path = path.with_name(f"{path.stem}_tmp{path.suffix}")
         try:
-            with pd.ExcelWriter(tmp_path, engine="openpyxl") as writer:
+            with pd.ExcelWriter(tmp_path, engine="xlsxwriter") as writer:
                 for name, book_frame in books.items():
                     book_frame.to_excel(writer, sheet_name=name, index=False)
             if hasattr(os, "sync"):
