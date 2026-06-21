@@ -243,6 +243,22 @@ def table_anchors():
     return render_table_page(anchor_filter=True)
 
 
+def redirect_after_save(sheet: str):
+    table_endpoint = request.form.get("table_endpoint", "table")
+    if table_endpoint not in {"table", "table_without_anchor", "table_anchors"}:
+        table_endpoint = "table"
+    return redirect(url_for(
+        table_endpoint,
+        sheet=sheet,
+        columns=request.form.getlist("columns"),
+        batch_size=request.form.get("batch_size", DEFAULT_BATCH_SIZE),
+        table_scale=request.form.get("table_scale", DEFAULT_TABLE_SCALE),
+        transition=request.form.get("transition", ""),
+        anchors=request.form.get("anchors", "") if table_endpoint == "table_anchors" else None,
+        page=request.form.get("page", 1),
+    ))
+
+
 @app.post("/save")
 def save_changes():
     path = current_path()
@@ -255,6 +271,7 @@ def save_changes():
             raise ValueError("Лист не найден")
         frame = books[sheet]
         pending_boolean_updates = {}
+        requested_updates = {}
         for key, value in request.form.items():
             if key.startswith("bool_false_"):
                 _, _, row, col = key.split("_")
@@ -264,9 +281,23 @@ def save_changes():
                 pending_boolean_updates[(int(row), int(col))] = value
             elif key.startswith("cell_"):
                 _, row, col = key.split("_")
-                frame.iat[int(row), int(col)] = value
-        for (row, col), value in pending_boolean_updates.items():
+                requested_updates[(int(row), int(col))] = value
+        requested_updates.update(pending_boolean_updates)
+        if not requested_updates:
+            flash("Нет полей для сохранения.")
+            return redirect_after_save(sheet)
+
+        changed_cells = []
+        for (row, col), value in requested_updates.items():
+            current_value = str(frame.iat[row, col])
+            if current_value != value:
+                changed_cells.append((row, col, value))
             frame.iat[row, col] = value
+
+        if not changed_cells:
+            flash("Изменений не обнаружено: значения в файле уже совпадают с отправленными.")
+            return redirect_after_save(sheet)
+
         books[sheet] = frame
         temp_name = None
         try:
@@ -282,22 +313,24 @@ def save_changes():
         finally:
             if temp_name:
                 Path(temp_name).unlink(missing_ok=True)
-        flash("Изменения сохранены.")
+
+        saved_frame = pd.read_excel(path, sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
+        not_saved_cells = []
+        for row, col, expected_value in changed_cells:
+            saved_value = str(saved_frame.iat[row, col])
+            if saved_value != expected_value:
+                column_name = saved_frame.columns[col]
+                not_saved_cells.append(f"строка {row + 2}, колонка «{column_name}»: ожидалось «{expected_value}», в файле «{saved_value}»")
+        if not_saved_cells:
+            details = "; ".join(not_saved_cells[:5])
+            if len(not_saved_cells) > 5:
+                details += f"; и еще {len(not_saved_cells) - 5}"
+            raise ValueError(f"Проверка после записи показала, что часть изменений не попала в файл: {details}")
+
+        flash(f"Изменения сохранены и проверены: обновлено ячеек — {len(changed_cells)}.")
     except Exception as exc:
         flash(workbook_error_details("сохранить изменения", path, exc))
-    table_endpoint = request.form.get("table_endpoint", "table")
-    if table_endpoint not in {"table", "table_without_anchor", "table_anchors"}:
-        table_endpoint = "table"
-    return redirect(url_for(
-        table_endpoint,
-        sheet=sheet,
-        columns=request.form.getlist("columns"),
-        batch_size=request.form.get("batch_size", DEFAULT_BATCH_SIZE),
-        table_scale=request.form.get("table_scale", DEFAULT_TABLE_SCALE),
-        transition=request.form.get("transition", ""),
-        anchors=request.form.get("anchors", "") if table_endpoint == "table_anchors" else None,
-        page=request.form.get("page", 1),
-    ))
+    return redirect_after_save(sheet)
 
 
 @app.get("/download")
