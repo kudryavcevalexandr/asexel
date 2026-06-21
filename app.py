@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pandas as pd
-from flask import Flask, flash, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -69,24 +69,43 @@ def index():
     return render_template("upload.html")
 
 
+def wants_json_response() -> bool:
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.accept_mimetypes.best == "application/json"
+
+
+def upload_error(message: str, status_code: int = 400):
+    if wants_json_response():
+        return jsonify({"ok": False, "message": message}), status_code
+    flash(message)
+    return redirect(url_for("index"))
+
+
 @app.post("/upload")
 def upload():
     file = request.files.get("excel_file")
-    if not file or not file.filename or Path(file.filename).suffix.lower() != ".xlsx":
-        flash("Выберите корректный файл формата .xlsx.")
-        return redirect(url_for("index"))
-    name = f"{uuid4().hex}_{secure_filename(file.filename) or 'workbook.xlsx'}"
+    if not file or not file.filename:
+        return upload_error("Файл не был передан браузером. Выберите файл .xlsx еще раз и повторите загрузку.")
+    original_name = file.filename
+    if Path(original_name).suffix.lower() != ".xlsx":
+        return upload_error(f"Выбран файл «{original_name}», но поддерживаются только книги Excel в формате .xlsx.")
+    name = f"{uuid4().hex}_{secure_filename(original_name) or 'workbook.xlsx'}"
     path = UPLOAD_DIR / name
-    file.save(path)
+    try:
+        file.save(path)
+    except Exception as exc:
+        path.unlink(missing_ok=True)
+        return upload_error(f"Не удалось получить выбранный файл «{original_name}» от браузера. Детали: {exc}", 500)
     try:
         pd.ExcelFile(path, engine="openpyxl")
-    except Exception as e:
+    except Exception as exc:
         path.unlink(missing_ok=True)
-        flash(f"Файл поврежден или не является читаемой книгой Excel. Детали: {e}")
-        return redirect(url_for("index"))
+        return upload_error(f"Файл «{original_name}» получен, но openpyxl не смог открыть его как .xlsx. Проверьте, что это именно книга Excel .xlsx, а не .xls/.xlsm/CSV с другим расширением, и что файл не зашифрован паролем. Технические детали: {type(exc).__name__}: {exc}")
     session.clear()
     session["current_file"] = name
-    return redirect(url_for("editor"))
+    editor_url = url_for("editor")
+    if wants_json_response():
+        return jsonify({"ok": True, "redirect": editor_url})
+    return redirect(editor_url)
 
 
 @app.get("/editor")
