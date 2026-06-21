@@ -19,6 +19,17 @@ DEFAULT_TABLE_SCALE = 80
 MIN_TABLE_SCALE = 50
 MAX_TABLE_SCALE = 150
 ANCHOR_COLUMNS = ("anchor_name", "anchor", "anchors")
+TRUE_VALUES = {"true", "1", "yes", "y", "да", "истина"}
+FALSE_VALUES = {"false", "0", "no", "n", "нет", "ложь"}
+
+
+def format_boolean_value(value: str) -> str:
+    normalized = str(value).strip().lower()
+    if normalized in TRUE_VALUES:
+        return "Истина"
+    if normalized in FALSE_VALUES:
+        return "Ложь"
+    return value
 
 
 def parse_anchor_filter(raw: str) -> list[str]:
@@ -124,9 +135,14 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
             frame = frame[frame[anchor_column].astype(str).str.strip().isin(anchors)]
         requested_columns = request.args.getlist("columns")
         visible = [column for column in frame.columns if column in requested_columns] if requested_columns else frame.columns.tolist()
+        requested_boolean_columns = request.args.getlist("boolean_columns")
+        boolean_columns = [column for column in visible if column in requested_boolean_columns]
         if without_anchor:
             visible = [column for column in visible if "anchor" not in column.lower()]
+            boolean_columns = [column for column in boolean_columns if column in visible]
         frame = frame.loc[:, visible]
+        for column in boolean_columns:
+            frame[column] = frame[column].map(format_boolean_value)
         batch_size = max(1, min(int(request.args.get("batch_size", DEFAULT_BATCH_SIZE)), MAX_BATCH_SIZE))
         page = max(1, int(request.args.get("page", 1)))
         table_scale = max(MIN_TABLE_SCALE, min(int(request.args.get("table_scale", DEFAULT_TABLE_SCALE)), MAX_TABLE_SCALE))
@@ -143,11 +159,11 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
     rows = frame.iloc[offset:offset + batch_size].values.tolist()
     def page_url(number):
         endpoint = "table_anchors" if anchor_filter else "table_without_anchor" if without_anchor else "table"
-        return url_for(endpoint, sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), anchors=request.args.get("anchors", "") if anchor_filter else None, page=number)
+        return url_for(endpoint, sheet=sheet, columns=visible, boolean_columns=boolean_columns, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), anchors=request.args.get("anchors", "") if anchor_filter else None, page=number)
     editor_url = url_for("editor", sheet=sheet)
     without_anchor_url = None
     if not without_anchor:
-        without_anchor_url = url_for("table_without_anchor", sheet=sheet, columns=visible, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=page)
+        without_anchor_url = url_for("table_without_anchor", sheet=sheet, columns=visible, boolean_columns=boolean_columns, batch_size=batch_size, table_scale=table_scale, transition=request.args.get("transition", ""), page=page)
 
     pagination_pages = []
     for number in range(1, pages + 1):
@@ -157,7 +173,7 @@ def render_table_page(*, without_anchor: bool = False, anchor_filter: bool = Fal
             pagination_pages.append("…")
 
     table_endpoint = "table_anchors" if anchor_filter else "table_without_anchor" if without_anchor else "table"
-    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url, without_anchor=without_anchor, without_anchor_url=without_anchor_url, table_endpoint=table_endpoint, anchor_filter=anchor_filter, anchors=request.args.get("anchors", ""))
+    return render_template("table.html", filename=path.name.split("_", 1)[1], sheet=sheet, columns=visible, boolean_columns=boolean_columns, rows=rows, page=page, pages=pages, total=total, range_start=offset + 1 if total else 0, range_end=min(offset + batch_size, total), batch_size=batch_size, page_url=page_url, pagination_pages=pagination_pages, table_scale=table_scale, transition=request.args.get("transition") == "true", editor_url=editor_url, without_anchor=without_anchor, without_anchor_url=without_anchor_url, table_endpoint=table_endpoint, anchor_filter=anchor_filter, anchors=request.args.get("anchors", ""))
 
 
 @app.get("/table")
